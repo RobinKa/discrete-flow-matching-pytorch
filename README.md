@@ -9,7 +9,7 @@ Implementation of [Discrete Flow Matching](https://arxiv.org/abs/2407.15595), wh
 1. (Optional) Create virtual environment with `python -m venv .venv` and activate with `source .venv/bin/activate`
 2. Install the dependencies: `pip install -r requirements.txt`
 
-- Only direct dependencies are specified right now
+- `requirements.txt` specifies all dependencies. `requirements-direct.txt` contains only the direct dependencies.
 - The code was tested with Python 3.12
 
 Run `python discrete_flow_matching/train.py` to start training a text generation model logging to wandb.
