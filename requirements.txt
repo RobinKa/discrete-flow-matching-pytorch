@@ -1,0 +1,8 @@
+datasets==3.1.0
+lightning==2.4.0
+pyinstrument==5.0.0
+structlog==24.4.0
+torch==2.5.1
+transformers==4.45.2
+typer==0.12.3
+wandb==0.18.5
