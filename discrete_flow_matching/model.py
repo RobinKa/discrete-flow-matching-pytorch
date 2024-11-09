@@ -280,6 +280,7 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         num_samples: int,
         sequence_length: int,
         num_sampling_steps: int,
+        stochasticity: float = 0.0,
         yield_intermediate: bool = False,
     ):
         # Start fully masked
@@ -297,6 +298,7 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         sampling_step_sizes = get_timestep_step_sizes(sampling_timesteps)
 
         for t, dt in zip(sampling_timesteps, sampling_step_sizes):
+            is_last_step = t == sampling_timesteps[-1]
             if yield_intermediate:
                 yield t, x
 
@@ -317,6 +319,14 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
             relative_t = t.to(torch.float32) / (len(self.scheduler) - 1)
             relative_dt = dt.to(torch.float32) / (len(self.scheduler) - 1)
             unmask_threshold = relative_dt / relative_t
+
+            # With remasking, the unmasking probability is changed
+            if stochasticity != 0:
+                unmask_threshold *= 1 + stochasticity * (1 - relative_t)
+
+            was_masked = x == self.mask_token_id
+
+            # Unmask
             will_unmask = (
                 torch.rand(
                     x.shape[:2],
@@ -325,7 +335,23 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
                 )
                 < unmask_threshold
             )
-            will_unmask &= x == self.mask_token_id
+            # Only unmask the tokens that were masked
+            will_unmask &= was_masked
+
+            # Remask when stochasticity is non-zero
+            if stochasticity != 0 and not is_last_step:
+                remask_threshold = relative_dt * stochasticity
+                will_remask = (
+                    torch.rand(
+                        x.shape[:2],
+                        device=unmask_threshold.device,
+                        dtype=unmask_threshold.dtype,
+                    )
+                    < remask_threshold
+                )
+                # Only remask the tokens that were unmasked
+                will_remask &= ~was_masked
+                x[will_remask] = self.mask_token_id
 
             # B L
             x[will_unmask] = samples[will_unmask]
