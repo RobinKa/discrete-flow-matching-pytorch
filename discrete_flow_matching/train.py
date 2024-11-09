@@ -3,11 +3,12 @@ from contextlib import nullcontext
 from time import perf_counter, time
 
 import datasets
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import torch
 import torch._dynamo.cache_size
 import torch.nn.functional as F
 import typer
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from pyinstrument import Profiler
 from pyinstrument.renderers.speedscope import SpeedscopeRenderer
@@ -153,7 +154,7 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
             self.blocks.append(
                 nn.Sequential(
                     Transpose(),
-                    nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, padding=1),
+                    nn.Conv1d(hidden_dim, hidden_dim, kernel_size=31, padding="same"),
                     Transpose(),
                     nn.LayerNorm([hidden_dim]),
                     nn.GELU(),
@@ -406,14 +407,14 @@ def main(
         train_data, batch_size=256, shuffle=True, num_workers=2, prefetch_factor=2
     )
     val_loader = DataLoader(
-        val_data, batch_size=64, shuffle=False, num_workers=2, prefetch_factor=2
+        val_data, batch_size=64, shuffle=False, num_workers=1, prefetch_factor=2
     )
 
     # Create model
     logger.info("Creating model")
     model = DiscreteFlowMatchingNet(
         vocab_size=len(tokenizer),  # .vocab_size excludes the new tokens
-        hidden_dim=1024,
+        hidden_dim=768,
         num_timesteps=1024,
         num_layers=6,
         tokenizer=tokenizer,
@@ -441,13 +442,14 @@ def main(
         limit_val_batches=1,
         callbacks=[
             FlopCounterCallback(train_step_flops=train_step_flops),
+            ModelCheckpoint(every_n_train_steps=1_000),
         ],
         logger=WandbLogger(project="flow-matching-tiny-stories"),
         precision="bf16",
         gradient_clip_algorithm="norm",
         gradient_clip_val=0.1,
         check_val_every_n_epoch=None,
-        val_check_interval=200,
+        val_check_interval=1_000,
     )
 
     fit_context = nullcontext() if not profile else Profiler(async_mode="disabled")
