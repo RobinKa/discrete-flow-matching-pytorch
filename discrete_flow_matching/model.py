@@ -8,6 +8,13 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from transformers import PreTrainedTokenizerBase
 
 
+def get_timestep_step_sizes(timesteps: torch.Tensor) -> torch.Tensor:
+    return -torch.diff(
+        timesteps,
+        append=torch.zeros([1], device=timesteps.device, dtype=timesteps.dtype),
+    )
+
+
 class Unsqueeze(nn.Module):
     def __init__(self, dim: int):
         super().__init__()
@@ -39,6 +46,7 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         num_timesteps: int,
         num_layers: int,
         tokenizer: PreTrainedTokenizerBase,
+        val_num_sampling_steps: int = 8,
     ):
         super().__init__()
 
@@ -46,6 +54,7 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         self.tokenizer = tokenizer
         self.pad_token_id = self.tokenizer.pad_token_id
         self.mask_token_id = self.tokenizer.mask_token_id
+        self.val_num_sampling_steps = val_num_sampling_steps
 
         self.scheduler = torch.linspace(
             1 / num_timesteps, 1, steps=num_timesteps, dtype=torch.float32
@@ -193,6 +202,15 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
     def validation_step(self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int):
         return self.validation_step_without_compile(batch, batch_idx)
 
+    def _get_sampling_timesteps(self, num_sampling_steps):
+        return torch.linspace(
+            len(self.scheduler) - 1,
+            len(self.scheduler) // num_sampling_steps,
+            num_sampling_steps,
+            device=self.device,
+            dtype=torch.long,
+        )
+
     @torch._dynamo.disable
     def validation_step_without_compile(
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
@@ -202,25 +220,7 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
 
         num_samples = 5  # Number of samples to visualize
 
-        num_sampling_steps = 8
-        sampling_timesteps = torch.flip(
-            torch.linspace(
-                len(self.scheduler) // num_sampling_steps,
-                len(self.scheduler) - 1,
-                num_sampling_steps,
-                device=x.device,
-                dtype=torch.int,
-            ),
-            [0],
-        )
-        # step_sizes = -torch.diff(
-        #     sampling_timesteps + 1,
-        #     append=torch.zeros([1], device=sampling_timesteps.device, dtype=torch.int),
-        # ).to(torch.float32) / len(self.scheduler)
-        # assert torch.allclose(
-        #     torch.sum(step_sizes),
-        #     torch.ones([1], dtype=torch.float32, device=x.device),
-        # )
+        sampling_timesteps = self._get_sampling_timesteps(self.val_num_sampling_steps)
 
         losses = {}
 
@@ -274,6 +274,66 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         )
 
         return losses["validation/loss_mean"]
+
+    def sample(
+        self,
+        num_samples: int,
+        sequence_length: int,
+        num_sampling_steps: int,
+        yield_intermediate: bool = False,
+    ):
+        # Start fully masked
+        # B L
+        x = torch.full(
+            [num_samples, sequence_length],
+            fill_value=self.tokenizer.mask_token_id,
+            dtype=torch.long,
+            device=self.device,
+        )
+
+        # Create the integer timesteps and step sizes for the given num_sampling_steps
+        # B
+        sampling_timesteps = self._get_sampling_timesteps(num_sampling_steps)
+        sampling_step_sizes = get_timestep_step_sizes(sampling_timesteps)
+
+        for t, dt in zip(sampling_timesteps, sampling_step_sizes):
+            if yield_intermediate:
+                yield t, x
+
+            # B L
+            t = t.repeat(x.shape[0])
+            assert t.shape == x.shape[:1], t.shape
+
+            # B L V
+            logits = self(x, t)
+
+            # B L
+            samples = torch.distributions.Categorical(logits=logits).sample()
+
+            # B L
+            # Chance to unmask proportional to
+            # - step size: higher step size means higher chance
+            # - timestep: lower timestep means higher chance (so in the end the chance is 100%)
+            relative_t = t.to(torch.float32) / (len(self.scheduler) - 1)
+            relative_dt = dt.to(torch.float32) / (len(self.scheduler) - 1)
+            unmask_threshold = relative_dt / relative_t
+            will_unmask = (
+                torch.rand(
+                    x.shape[:2],
+                    device=unmask_threshold.device,
+                    dtype=unmask_threshold.dtype,
+                )
+                < unmask_threshold
+            )
+            will_unmask &= x == self.mask_token_id
+
+            # B L
+            x[will_unmask] = samples[will_unmask]
+
+        if yield_intermediate:
+            yield torch.zeros_like(t), x
+        else:
+            return x
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=1e-2)
