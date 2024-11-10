@@ -29,6 +29,9 @@ def main(
     max_steps: int = -1,
     profile: bool = False,
     train_step_flops: str = "",
+    ckpt_path: str = "",
+    val_interval: int = 1_000,
+    checkpoint_interval: int = 1_000,
 ):
     # Load tokenizer
     logger.info("Loading tokenizer")
@@ -92,19 +95,24 @@ def main(
         limit_val_batches=1,
         callbacks=[
             FlopCounterCallback(train_step_flops=train_step_flops),
-            ModelCheckpoint(every_n_train_steps=1_000),
+            ModelCheckpoint(every_n_train_steps=checkpoint_interval, save_top_k=-1),
         ],
         logger=WandbLogger(project="flow-matching-tiny-stories"),
         precision="bf16",
         gradient_clip_algorithm="norm",
         gradient_clip_val=0.1,
         check_val_every_n_epoch=None,
-        val_check_interval=1_000,
+        val_check_interval=val_interval,
     )
 
     fit_context = nullcontext() if not profile else Profiler(async_mode="disabled")
     with fit_context:
-        trainer.fit(model, train_loader, val_loader)
+        trainer.fit(
+            model=model,
+            train_dataloaders=train_loader,
+            val_dataloaders=val_loader,
+            ckpt_path=ckpt_path if ckpt_path else None,
+        )
 
     if profile:
         with open(f"speedscope-{time()}.json", "w") as f:
