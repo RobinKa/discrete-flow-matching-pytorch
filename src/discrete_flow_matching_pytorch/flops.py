@@ -76,13 +76,16 @@ class FlopCounterCallback(pl.Callback):
 
         # Accumulate total runtime
         if self.previous_t_train_batch_end is not None:
-            self.duration += t - self.previous_t_train_batch_end
+            end_to_end_time = t - self.previous_t_train_batch_end
+            self.duration += end_to_end_time
             end_to_start_time = (
                 self.train_batch_t_start - self.previous_t_train_batch_end
             )
         else:
             self.duration += t - self.t_start
+            end_to_end_time = None
             end_to_start_time = None
+
         self.previous_t_train_batch_end = t
 
         # Optimal total flops
@@ -107,9 +110,13 @@ class FlopCounterCallback(pl.Callback):
                 "flops/train_duration": self.trained_duration,
                 "flops/duration": self.duration,
                 "flops/mfu": mfu,
+                "flops/train_start_to_end_time": train_step_duration,
                 **(
-                    {"flops/train_end_to_start_time": end_to_start_time}
-                    if end_to_start_time is not None
+                    {
+                        "flops/train_end_to_start_time": end_to_start_time,
+                        "flops/train_end_to_end_time": end_to_end_time,
+                    }
+                    if end_to_start_time is not None and end_to_end_time is not None
                     else {}
                 ),
             }
