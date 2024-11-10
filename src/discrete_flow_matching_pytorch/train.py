@@ -10,9 +10,11 @@ from pyinstrument import Profiler
 from pyinstrument.renderers.speedscope import SpeedscopeRenderer
 from structlog import get_logger
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
 
-from discrete_flow_matching_pytorch.data import load_tiny_stories
+from discrete_flow_matching_pytorch.data import (
+    get_default_tokenizer,
+    load_dataset_by_name,
+)
 from discrete_flow_matching_pytorch.flops import FlopCounterCallback
 from discrete_flow_matching_pytorch.model import DiscreteFlowMatchingNet
 
@@ -30,15 +32,19 @@ def main(
     ckpt_path: str = "",
     val_interval: int = 1_000,
     checkpoint_interval: int = 1_000,
+    dataset: str = "tiny_stories",
 ):
     # Load tokenizer
     logger.info("Loading tokenizer")
-    tokenizer = AutoTokenizer.from_pretrained("gpt2")
-    tokenizer.add_special_tokens({"pad_token": "[PAD]", "mask_token": "[MASK]"})
+    tokenizer = get_default_tokenizer()
 
-    logger.info("Loading datasets")
-    train_data = load_tiny_stories("train")
-    val_data = load_tiny_stories("validation")
+    logger.info("Loading dataset", dataset)
+    train_data = load_dataset_by_name(
+        dataset=dataset, tokenizer=tokenizer, split="train"
+    )
+    val_data = load_dataset_by_name(
+        dataset=dataset, tokenizer=tokenizer, split="validation"
+    )
 
     # Dataloader
     logger.info("Creating data loaders")
