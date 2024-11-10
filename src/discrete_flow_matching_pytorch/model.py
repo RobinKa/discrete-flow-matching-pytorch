@@ -99,6 +99,10 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
     def on_fit_start(self) -> None:
         self.scheduler = self.scheduler.to(self.device)
 
+    def on_validation_model_eval(self) -> None:
+        self.scheduler = self.scheduler.to(self.device)
+        return super().on_validation_model_eval()
+
     def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         # x: B, L, V, t: B
         x = self.input_projection(x)  # BLC

@@ -121,10 +121,14 @@ def main(
         check_val_every_n_epoch=None,
         val_check_interval=val_interval,
         log_every_n_steps=25,
+        num_sanity_val_steps=0,
     )
 
     fit_context = nullcontext() if not profile else Profiler(async_mode="disabled")
     with fit_context:
+        # Run validation before training to get the initial loss
+        trainer.validate(model=model, dataloaders=val_loader)
+
         trainer.fit(
             model=model,
             train_dataloaders=train_loader,
