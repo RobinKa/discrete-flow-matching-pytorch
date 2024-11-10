@@ -317,11 +317,17 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         x: torch.Tensor | None = None,
         stochasticity: float = 0.0,
         yield_intermediate: bool = False,
+        yield_logits: bool = False,
         temperature: float = 1.0,
+        cfg_scale: float = 1.0,
     ):
         assert (
             num_samples is not None and sequence_length is not None
         ) or x is not None, "Must pass either (num_samples and sequence_length) or x"
+
+        assert not (
+            yield_intermediate and yield_logits
+        ), "Can't yield both logits and intermediate results"
 
         # B L
         if x is None:
@@ -355,6 +361,21 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
 
             # B L V
             logits = self(x, t)
+
+            if cfg_scale != 1.0:
+                assert should_noise is not None
+                x_uncond = x.clone()
+                x_uncond[~should_noise] = self.mask_token_id
+
+                # Classifier-free guidance
+                # Run model unconditionally (conditioning fully masked)
+                logits_uncond = self(x_uncond, t)
+
+                # Mix the logits according to cfg_scale
+                logits = logits_uncond + cfg_scale * (logits - logits_uncond)
+
+            if yield_logits:
+                yield t, logits
 
             # B L
             samples = torch.distributions.Categorical(
