@@ -339,15 +339,19 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         )
 
         # Create the integer timesteps and step sizes for the given num_sampling_steps
-        # B
+        # S
         sampling_timesteps = self._get_sampling_timesteps(num_sampling_steps)
+        relative_ts = self.scheduler[sampling_timesteps]
+        relative_dts = get_timestep_step_sizes(relative_ts)
 
-        for t in sampling_timesteps:
+        for t, relative_t, relative_dt in zip(
+            sampling_timesteps, relative_ts, relative_dts
+        ):
             is_last_step = t == sampling_timesteps[-1]
             if yield_intermediate:
                 yield t, x
 
-            # B L
+            # B
             t = t.repeat(x.shape[0])
             assert t.shape == x.shape[:1], t.shape
 
@@ -363,8 +367,6 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
             # Chance to unmask proportional to
             # - step size: higher step size means higher chance
             # - timestep: lower timestep means higher chance (so in the end the chance is 100%)
-            relative_t = self.scheduler[t]
-            relative_dt = get_timestep_step_sizes(relative_t)
             unmask_threshold = relative_dt / relative_t
 
             # With remasking, the unmasking probability is changed
