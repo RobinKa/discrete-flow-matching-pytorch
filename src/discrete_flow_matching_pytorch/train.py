@@ -39,6 +39,8 @@ def main(
     checkpoint_interval: int = 1_000,
     dataset: str = "tiny_stories",
     train_batch_size: int = 256,
+    shuffle_train: bool = True,  # Needs to be false for IterableDataset
+    val_split_name: str = "validation",  # Some datasets don't have validation, but we can still use train
     hidden_dim: int = 768,
     num_layers: int = 6,
 ):
@@ -51,7 +53,7 @@ def main(
         dataset=dataset, tokenizer=tokenizer, split="train"
     )
     val_data = load_dataset_by_name(
-        dataset=dataset, tokenizer=tokenizer, split="validation"
+        dataset=dataset, tokenizer=tokenizer, split=val_split_name
     )
 
     # Dataloader
@@ -59,7 +61,7 @@ def main(
     train_loader = DataLoader(
         train_data,
         batch_size=train_batch_size,
-        shuffle=True,
+        shuffle=shuffle_train,
         num_workers=2,
         prefetch_factor=2,
     )

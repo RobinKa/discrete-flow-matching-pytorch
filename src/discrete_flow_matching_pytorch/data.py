@@ -74,20 +74,61 @@ def load_squad(
     return load_split(split)
 
 
+def load_github_code(
+    tokenizer,
+    split: str,
+    languages: list[str],
+    licenses: list[str],
+    max_length: int = 128,
+):
+    def tokenize_function(examples):
+        return dict(
+            input_ids=tokenizer(
+                examples["code"],
+                truncation=True,
+                padding="max_length",
+                max_length=max_length,
+            )["input_ids"]
+        )
+
+    # Load dataset
+    def load_split(split):
+        dataset: datasets.IterableDataset = datasets.load_dataset(
+            "codeparrot/github-code", split=split, streaming=True
+        )
+        dataset = dataset.map(tokenize_function, batched=True)
+        dataset = dataset.select_columns(["input_ids"])
+        dataset = dataset.with_format(type="torch")
+        return dataset
+
+    return load_split(split)
+
+
 def load_dataset_by_name(dataset: str, tokenizer, split: str):
     match dataset:
         case "squad":
             return load_squad(tokenizer, split)
         case "tiny_stories":
             return load_tiny_stories(tokenizer, split)
+        case "github_code_dockerfile_mit":
+            return load_github_code(
+                tokenizer, split, languages=["Dockerfile"], licenses=["mit"]
+            )
+        case "github_code_python_mit":
+            return load_github_code(
+                tokenizer, split, languages=["Python"], licenses=["mit"]
+            )
         case _:
             raise ValueError(f"Unknown dataset {dataset}")
 
 
-def main(dataset: str = "squad", split: str = "train"):
+def main(dataset: str = "squad", split: str = "train", rows_to_print: int = 1):
     tokenizer = get_default_tokenizer()
     dataset = load_dataset_by_name(dataset=dataset, tokenizer=tokenizer, split=split)
-    print(dataset[0])
+    for i, row in enumerate(dataset):
+        print(row)
+        if i + 1 >= rows_to_print:
+            break
 
 
 if __name__ == "__main__":
