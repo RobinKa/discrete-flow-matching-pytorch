@@ -181,9 +181,6 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         target = x.clone()
         # Only calculate loss on tokens that were masked
         target[noised_x != self.mask_token_id] = -100
-        # Only caclulate loss on tokens that should be noised
-        if should_noise is not None:
-            target[~should_noise] = -100
 
         loss = F.cross_entropy(
             # CE expects input BVL, target BL
@@ -277,12 +274,9 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
             target = x.clone()
             # Only calculate loss on tokens that were masked
             target[noised_x != self.mask_token_id] = -100
-            # Only caclulate loss on tokens that should be noised
-            if should_noise is not None:
-                target[~should_noise] = -100
 
             # B L V
-            logits = self(noised_x, t)  # .to(torch.float32)
+            logits = self(noised_x, t)
 
             # Get samples for each token
             # B L
@@ -320,23 +314,30 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
 
     def sample(
         self,
-        num_samples: int,
-        sequence_length: int,
         num_sampling_steps: int,
+        num_samples: int | None = None,
+        sequence_length: int | None = None,
+        x: torch.Tensor | None = None,
         stochasticity: float = 0.0,
         yield_intermediate: bool = False,
         temperature: float = 1.0,
     ):
-        # TODO: Add should_noise support to keep some tokens static
+        assert (
+            num_samples is not None and sequence_length is not None
+        ) or x is not None, "Must pass either (num_samples and sequence_length) or x"
 
-        # Start fully masked
         # B L
-        x = torch.full(
-            [num_samples, sequence_length],
-            fill_value=self.tokenizer.mask_token_id,
-            dtype=torch.long,
-            device=self.device,
-        )
+        if x is None:
+            # Start fully masked
+            x = torch.full(
+                [num_samples, sequence_length],
+                fill_value=self.tokenizer.mask_token_id,
+                dtype=torch.long,
+                device=self.device,
+            )
+            should_noise = None
+        else:
+            should_noise = x == self.mask_token_id
 
         # Create the integer timesteps and step sizes for the given num_sampling_steps
         # S
@@ -400,6 +401,11 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
                 )
                 # Only remask the tokens that were unmasked
                 will_remask &= ~was_masked
+
+                # Only remask tokens that aren't constant
+                if should_noise is not None:
+                    will_remask &= should_noise
+
                 x[will_remask] = self.mask_token_id
 
             # B L
