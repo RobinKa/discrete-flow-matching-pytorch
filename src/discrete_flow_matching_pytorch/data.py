@@ -78,8 +78,8 @@ def load_squad(
 def load_github_code(
     tokenizer,
     split: str,
-    languages: list[str],
-    licenses: list[str],
+    languages: list[str] | None,
+    licenses: list[str] | None,
     max_length: int = 128,
 ):
     def tokenize_function(examples):
@@ -100,6 +100,8 @@ def load_github_code(
             streaming=True,
             languages=languages,
             licenses=licenses,
+            filter_languages=languages is not None,
+            filter_licenses=licenses is not None,
         )
         dataset = dataset.map(tokenize_function, batched=True)
         dataset = dataset.select_columns(["input_ids"])
