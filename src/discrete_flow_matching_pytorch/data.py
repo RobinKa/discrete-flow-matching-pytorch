@@ -117,6 +117,8 @@ def load_dataset_by_name(dataset: str, tokenizer, split: str):
             return load_squad(tokenizer, split)
         case "tiny_stories":
             return load_tiny_stories(tokenizer, split)
+        case "github_code":
+            return load_github_code(tokenizer, split, languages=None, licenses=None)
         case "github_code_dockerfile_mit":
             return load_github_code(
                 tokenizer, split, languages=["Dockerfile"], licenses=["mit"]
