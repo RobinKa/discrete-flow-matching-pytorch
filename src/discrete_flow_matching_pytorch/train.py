@@ -1,11 +1,8 @@
-import os
 from contextlib import nullcontext
 from time import time
 
-import datasets
 import lightning.pytorch as pl
 import torch
-import torch._dynamo.cache_size
 import typer
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
@@ -15,6 +12,7 @@ from structlog import get_logger
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 
+from discrete_flow_matching_pytorch.data import load_tiny_stories
 from discrete_flow_matching_pytorch.flops import FlopCounterCallback
 from discrete_flow_matching_pytorch.model import DiscreteFlowMatchingNet
 
@@ -38,21 +36,9 @@ def main(
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
     tokenizer.add_special_tokens({"pad_token": "[PAD]", "mask_token": "[MASK]"})
 
-    def tokenize_function(examples):
-        return tokenizer(
-            examples["text"], truncation=True, padding="max_length", max_length=128
-        )
-
-    # Load dataset
-    def load_split(split):
-        dataset = datasets.load_dataset("roneneldan/TinyStories", split=split)
-        dataset = dataset.map(tokenize_function, batched=True, num_proc=os.cpu_count())
-        dataset.set_format(type="torch", columns=["input_ids"])
-        return dataset
-
     logger.info("Loading datasets")
-    train_data = load_split("train")
-    val_data = load_split("validation")
+    train_data = load_tiny_stories("train")
+    val_data = load_tiny_stories("validation")
 
     # Dataloader
     logger.info("Creating data loaders")
