@@ -40,6 +40,7 @@ def main(
     dataset: str = "tiny_stories",
     train_batch_size: int = 256,
     shuffle_train: bool = True,  # Needs to be false for IterableDataset
+    train_workers: int = 2,
     val_split_name: str = "validation",  # Some datasets don't have validation, but we can still use train
     hidden_dim: int = 768,
     num_layers: int = 6,
@@ -62,7 +63,7 @@ def main(
         train_data,
         batch_size=train_batch_size,
         shuffle=shuffle_train,
-        num_workers=2,
+        num_workers=train_workers,
         prefetch_factor=2,
     )
     val_loader = DataLoader(
@@ -119,6 +120,7 @@ def main(
         gradient_clip_val=0.1,
         check_val_every_n_epoch=None,
         val_check_interval=val_interval,
+        log_every_n_steps=25,
     )
 
     fit_context = nullcontext() if not profile else Profiler(async_mode="disabled")
