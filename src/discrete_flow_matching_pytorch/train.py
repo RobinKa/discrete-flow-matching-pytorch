@@ -15,8 +15,8 @@ from structlog import get_logger
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 
-from discrete_flow_matching.flops import FlopCounterCallback
-from discrete_flow_matching.model import DiscreteFlowMatchingNet
+from discrete_flow_matching_pytorch.flops import FlopCounterCallback
+from discrete_flow_matching_pytorch.model import DiscreteFlowMatchingNet
 
 logger = get_logger()
 
