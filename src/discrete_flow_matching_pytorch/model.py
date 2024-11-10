@@ -110,16 +110,24 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
 
         return x
 
-    def forward_noising(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def forward_noising(
+        self, x: torch.Tensor, t: torch.Tensor, should_noise: torch.Tensor | None
+    ) -> torch.Tensor:
         """Mask x (BL) depending on time step t (BL)."""
 
         # t is the masking probability. t=0%: dont mask anything, t=100%: mask everything
         mask_prob = self.scheduler[t].expand(-1, x.shape[1])
         will_mask = torch.bernoulli(mask_prob).to(dtype=torch.bool)
-        is_not_pad = x != self.pad_token_id
+
+        # Don't mask padding tokens
+        will_mask &= x != self.pad_token_id
+
+        # Don't mask tokens that should not be noised
+        if should_noise is not None:
+            will_mask &= should_noise
 
         noised_x = x.clone()
-        noised_x[will_mask & is_not_pad] = self.mask_token_id
+        noised_x[will_mask] = self.mask_token_id
 
         return noised_x
 
@@ -133,21 +141,27 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         )
 
     def training_step(self, batch, batch_idx: int):
-        # x: B L
-        x = batch["input_ids"]
+        # B L
+        x: torch.Tensor = batch["input_ids"]
+        should_noise: torch.Tensor | None = batch.get("should_noise")
 
         # t: B
         t = torch.randint(0, len(self.scheduler), [x.size(0)], device=x.device)
 
         # noised_x: B L
-        noised_x = self.forward_noising(x, t.unsqueeze(1))
+        noised_x = self.forward_noising(
+            x=x, t=t.unsqueeze(1), should_noise=should_noise
+        )
 
         # Unmasking logits: B L V
         logits = self(noised_x, t)  # .to(torch.float32)
 
-        # Only calculate loss on tokens that were masked
         target = x.clone()
+        # Only calculate loss on tokens that were masked
         target[noised_x != self.mask_token_id] = -100
+        # Only caclulate loss on tokens that should be noised
+        if should_noise is not None:
+            target[~should_noise] = -100
 
         loss = F.cross_entropy(
             # CE expects input BVL, target BL
@@ -199,9 +213,6 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
                     ],
                 )
 
-    def validation_step(self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int):
-        return self.validation_step_without_compile(batch, batch_idx)
-
     def _get_sampling_timesteps(self, num_sampling_steps):
         return torch.linspace(
             len(self.scheduler) - 1,
@@ -217,6 +228,7 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
     ):
         # x: B L
         x = batch["input_ids"]
+        should_noise = batch.get("should_noise")
 
         num_samples = 5  # Number of samples to visualize
 
@@ -234,12 +246,18 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
             assert t.shape == x.shape[:1], t.shape
 
             # B L
-            noised_x = self.forward_noising(x, t.unsqueeze(1))
+            noised_x = self.forward_noising(
+                x, t.unsqueeze(1), should_noise=should_noise
+            )
 
             # Only calculate loss on tokens that were masked
             # B L
             target = x.clone()
+            # Only calculate loss on tokens that were masked
             target[noised_x != self.mask_token_id] = -100
+            # Only caclulate loss on tokens that should be noised
+            if should_noise is not None:
+                target[~should_noise] = -100
 
             # B L V
             logits = self(noised_x, t)  # .to(torch.float32)
@@ -275,6 +293,9 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
 
         return losses["validation/loss_mean"]
 
+    def validation_step(self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int):
+        return self.validation_step_without_compile(batch, batch_idx)
+
     def sample(
         self,
         num_samples: int,
@@ -283,6 +304,8 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         stochasticity: float = 0.0,
         yield_intermediate: bool = False,
     ):
+        # TODO: Add should_noise support to keep some tokens static
+
         # Start fully masked
         # B L
         x = torch.full(

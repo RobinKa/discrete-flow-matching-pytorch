@@ -23,9 +23,14 @@ logger = get_logger()
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
+def get_run_name(dataset: str, train_batch_size: int, hidden_dim: int, num_layers: int):
+    return f"{dataset}-bs={train_batch_size}-h={hidden_dim}-l={num_layers}"
+
+
 @app.command()
 def main(
-    no_compile: bool = False,
+    compile: bool = True,
+    wandb: bool = True,
     max_steps: int = -1,
     profile: bool = False,
     train_step_flops: str = "",
@@ -33,12 +38,15 @@ def main(
     val_interval: int = 1_000,
     checkpoint_interval: int = 1_000,
     dataset: str = "tiny_stories",
+    train_batch_size: int = 256,
+    hidden_dim: int = 768,
+    num_layers: int = 6,
 ):
     # Load tokenizer
     logger.info("Loading tokenizer")
     tokenizer = get_default_tokenizer()
 
-    logger.info("Loading dataset", dataset)
+    logger.info("Loading dataset", dataset=dataset)
     train_data = load_dataset_by_name(
         dataset=dataset, tokenizer=tokenizer, split="train"
     )
@@ -49,7 +57,11 @@ def main(
     # Dataloader
     logger.info("Creating data loaders")
     train_loader = DataLoader(
-        train_data, batch_size=256, shuffle=True, num_workers=2, prefetch_factor=2
+        train_data,
+        batch_size=train_batch_size,
+        shuffle=True,
+        num_workers=2,
+        prefetch_factor=2,
     )
     val_loader = DataLoader(
         val_data, batch_size=64, shuffle=False, num_workers=1, prefetch_factor=2
@@ -59,13 +71,13 @@ def main(
     logger.info("Creating model")
     model = DiscreteFlowMatchingNet(
         vocab_size=len(tokenizer),  # .vocab_size excludes the new tokens
-        hidden_dim=768,
+        hidden_dim=hidden_dim,
         num_timesteps=1024,
-        num_layers=6,
+        num_layers=num_layers,
         tokenizer=tokenizer,
     ).to(dtype=torch.bfloat16)
 
-    if not no_compile:
+    if compile:
         torch._dynamo.config.cache_size_limit = 512
         torch._dynamo.config.capture_scalar_outputs = True
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -89,7 +101,17 @@ def main(
             FlopCounterCallback(train_step_flops=train_step_flops),
             ModelCheckpoint(every_n_train_steps=checkpoint_interval, save_top_k=-1),
         ],
-        logger=WandbLogger(project="flow-matching-tiny-stories"),
+        logger=WandbLogger(
+            project="discrete-flow-matching",
+            name=get_run_name(
+                dataset=dataset,
+                train_batch_size=train_batch_size,
+                hidden_dim=hidden_dim,
+                num_layers=num_layers,
+            ),
+        )
+        if wandb
+        else None,
         precision="bf16",
         gradient_clip_algorithm="norm",
         gradient_clip_val=0.1,

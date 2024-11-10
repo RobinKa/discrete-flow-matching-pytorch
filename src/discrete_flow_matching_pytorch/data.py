@@ -1,5 +1,4 @@
 import os
-from typing import Literal
 
 import datasets
 import torch
@@ -35,7 +34,7 @@ def load_tiny_stories(tokenizer, split: str, max_length: int = 128):
 
 
 def load_squad(
-    tokenizer, split, max_length_question: int = 96, max_length_answer: int = 16
+    tokenizer, split, max_length_question: int = 32, max_length_answer: int = 8
 ):
     def tokenize_function(examples):
         question_tokens = tokenizer(

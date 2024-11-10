@@ -161,5 +161,6 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-/flow-matching-tiny-stories
+/discrete-flow-matching
+/lightning_logs
 /wandb
