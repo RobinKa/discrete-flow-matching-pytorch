@@ -52,6 +52,8 @@ def main(
     num_layers: int = 6,
     scheduler_type: str = "square",
 ):
+    torch.set_float32_matmul_precision("high")
+
     # Load tokenizer
     logger.info("Loading tokenizer")
     tokenizer = get_default_tokenizer()
