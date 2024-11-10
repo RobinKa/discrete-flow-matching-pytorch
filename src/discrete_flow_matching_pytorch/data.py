@@ -3,6 +3,7 @@ import os
 import datasets
 import torch
 import typer
+from tqdm import tqdm
 from transformers import AutoTokenizer
 
 
@@ -94,7 +95,11 @@ def load_github_code(
     # Load dataset
     def load_split(split):
         dataset: datasets.IterableDataset = datasets.load_dataset(
-            "codeparrot/github-code", split=split, streaming=True
+            "codeparrot/github-code",
+            split=split,
+            streaming=True,
+            languages=languages,
+            licenses=licenses,
         )
         dataset = dataset.map(tokenize_function, batched=True)
         dataset = dataset.select_columns(["input_ids"])
@@ -122,12 +127,19 @@ def load_dataset_by_name(dataset: str, tokenizer, split: str):
             raise ValueError(f"Unknown dataset {dataset}")
 
 
-def main(dataset: str = "squad", split: str = "train", rows_to_print: int = 1):
+def main(
+    dataset: str = "squad",
+    split: str = "train",
+    rows_to_print: int = 1,
+    benchmark: bool = False,
+):
     tokenizer = get_default_tokenizer()
     dataset = load_dataset_by_name(dataset=dataset, tokenizer=tokenizer, split=split)
-    for i, row in enumerate(dataset):
-        print(row)
-        if i + 1 >= rows_to_print:
+    for i, row in tqdm(enumerate(dataset)):
+        should_print = i < rows_to_print
+        if should_print:
+            print(row)
+        if not should_print and not benchmark:
             break
 
 
