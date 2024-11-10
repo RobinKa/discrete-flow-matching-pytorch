@@ -3,6 +3,7 @@ import os
 import datasets
 import torch
 import typer
+from more_itertools import chunked
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
@@ -82,15 +83,34 @@ def load_github_code(
     licenses: list[str] | None,
     max_length: int = 128,
 ):
+    assert split in ["train", "validation"], split
+
+    # github code does not have a validation split, but we can use different seeds
+    if split == "validation":
+        shuffle_seed = 0
+        split = "train"
+    else:
+        shuffle_seed = 1
+
     def tokenize_function(examples):
-        return dict(
-            input_ids=tokenizer(
-                examples["code"],
-                truncation=True,
-                padding="max_length",
-                max_length=max_length,
-            )["input_ids"]
-        )
+        # List to store the chunks for all examples in a batch
+        all_chunks = {"input_ids": []}
+
+        # Tokenize each code example and split into chunks of max_length
+        for code in examples["code"]:
+            # Tokenize the entire code snippet without truncation
+            tokens = tokenizer(code, truncation=False, padding=False)["input_ids"]
+
+            # Split tokens into chunks of max_length
+            for chunk in chunked(tokens, max_length):
+                # Pad the chunk to max_length if needed
+                if len(chunk) < max_length:
+                    chunk += [tokenizer.pad_token_id] * (max_length - len(chunk))
+
+                # Append each chunk to the list under "input_ids"
+                all_chunks["input_ids"].append(chunk)
+
+        return all_chunks
 
     # Load dataset
     def load_split(split):
@@ -103,9 +123,10 @@ def load_github_code(
             filter_languages=languages is not None,
             filter_licenses=licenses is not None,
         )
-        dataset = dataset.map(tokenize_function, batched=True)
-        dataset = dataset.select_columns(["input_ids"])
+        dataset = dataset.select_columns(["code"])
+        dataset = dataset.map(tokenize_function, batched=True, remove_columns=["code"])
         dataset = dataset.with_format(type="torch")
+        dataset = dataset.shuffle(seed=shuffle_seed)
         return dataset
 
     return load_split(split)

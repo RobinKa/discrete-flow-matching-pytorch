@@ -3,8 +3,8 @@ import torch
 import torch._dynamo.cache_size
 import torch.nn.functional as F
 from lightning.pytorch.loggers import WandbLogger
+from schedulefree import AdamWScheduleFree
 from torch import nn
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 from transformers import PreTrainedTokenizerBase
 
 
@@ -91,6 +91,8 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
 
         # Output projection, B L C -> B L V
         self.output_projection = nn.Linear(hidden_dim, vocab_size)
+
+        self._optimizer_train = False
 
         self.save_hyperparameters()
 
@@ -384,14 +386,27 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         else:
             return x
 
+    def set_optimizer_state(self, train: bool):
+        optimizers = self.optimizers(False)
+        self._optimizer_train = train
+        if isinstance(optimizers, AdamWScheduleFree):
+            if train:
+                optimizers.train()
+            else:
+                optimizers.eval()
+
+    def on_train_batch_start(self, *args, **kwargs):
+        if not self._optimizer_train:
+            self.set_optimizer_state(train=True)
+
+    def on_train_start(self) -> None:
+        self.set_optimizer_state(train=True)
+
+    def on_validation_start(self) -> None:
+        self.set_optimizer_state(train=False)
+
+    def on_save_checkpoint(self, *args, **kwargs) -> None:
+        self.set_optimizer_state(train=False)
+
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-2)
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": ReduceLROnPlateau(optimizer, factor=0.5, patience=5),
-                "monitor": "train/loss",
-                "interval": "step",
-                "frequency": 50,
-            },
-        }
+        return AdamWScheduleFree(self.parameters(), lr=1e-2)
