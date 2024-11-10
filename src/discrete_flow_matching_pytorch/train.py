@@ -23,8 +23,14 @@ logger = get_logger()
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
 
-def get_run_name(dataset: str, train_batch_size: int, hidden_dim: int, num_layers: int):
-    return f"{dataset}-bs={train_batch_size}-h={hidden_dim}-l={num_layers}"
+def get_run_name(
+    dataset: str,
+    train_batch_size: int,
+    hidden_dim: int,
+    num_layers: int,
+    scheduler_type: str,
+):
+    return f"{dataset}-bs={train_batch_size}-h={hidden_dim}-l={num_layers}-s={scheduler_type}"
 
 
 @app.command()
@@ -35,7 +41,7 @@ def main(
     profile: bool = False,
     train_step_flops: str = "",
     ckpt_path: str = "",
-    val_interval: int = 1_000,
+    val_interval: int = 500,
     checkpoint_interval: int = 1_000,
     dataset: str = "tiny_stories",
     train_batch_size: int = 256,
@@ -44,6 +50,7 @@ def main(
     val_split_name: str = "validation",  # Some datasets don't have validation, but we can still use train
     hidden_dim: int = 768,
     num_layers: int = 6,
+    scheduler_type: str = "square",
 ):
     # Load tokenizer
     logger.info("Loading tokenizer")
@@ -78,6 +85,7 @@ def main(
         num_timesteps=1024,
         num_layers=num_layers,
         tokenizer=tokenizer,
+        scheduler_type=scheduler_type,
     ).to(dtype=torch.bfloat16)
 
     if compile:
@@ -111,6 +119,7 @@ def main(
                 train_batch_size=train_batch_size,
                 hidden_dim=hidden_dim,
                 num_layers=num_layers,
+                scheduler_type=scheduler_type,
             ),
         )
         if wandb

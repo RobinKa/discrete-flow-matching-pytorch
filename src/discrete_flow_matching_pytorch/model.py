@@ -1,3 +1,5 @@
+from typing import Literal
+
 import lightning.pytorch as pl
 import torch
 import torch._dynamo.cache_size
@@ -47,6 +49,7 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         num_layers: int,
         tokenizer: PreTrainedTokenizerBase,
         val_num_sampling_steps: int = 8,
+        scheduler_type: Literal["linear", "square"] = "square",
     ):
         super().__init__()
 
@@ -59,6 +62,19 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         self.scheduler = torch.linspace(
             1 / num_timesteps, 1, steps=num_timesteps, dtype=torch.float32
         )  # Probability path scheduler
+
+        match scheduler_type:
+            case "linear":
+                pass
+            case "square":
+                # Put more weight on higher (=more noisy) timesteps.
+                # Examples:
+                # 0 -> 0 (no noise)
+                # 0.5 -> 0.75 (50% noise moved to 75% noise)
+                # 1 -> 1 (all noise)
+                self.scheduler = 1 - torch.square(1 - self.scheduler)
+            case _:
+                raise ValueError(f"Invalid scheduler type: {scheduler_type}")
 
         # x: B, L
 
@@ -309,6 +325,7 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         num_sampling_steps: int,
         stochasticity: float = 0.0,
         yield_intermediate: bool = False,
+        temperature: float = 1.0,
     ):
         # TODO: Add should_noise support to keep some tokens static
 
@@ -324,9 +341,8 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         # Create the integer timesteps and step sizes for the given num_sampling_steps
         # B
         sampling_timesteps = self._get_sampling_timesteps(num_sampling_steps)
-        sampling_step_sizes = get_timestep_step_sizes(sampling_timesteps)
 
-        for t, dt in zip(sampling_timesteps, sampling_step_sizes):
+        for t in sampling_timesteps:
             is_last_step = t == sampling_timesteps[-1]
             if yield_intermediate:
                 yield t, x
@@ -339,14 +355,16 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
             logits = self(x, t)
 
             # B L
-            samples = torch.distributions.Categorical(logits=logits).sample()
+            samples = torch.distributions.Categorical(
+                logits=logits / temperature
+            ).sample()
 
             # B L
             # Chance to unmask proportional to
             # - step size: higher step size means higher chance
             # - timestep: lower timestep means higher chance (so in the end the chance is 100%)
-            relative_t = t.to(torch.float32) / (len(self.scheduler) - 1)
-            relative_dt = dt.to(torch.float32) / (len(self.scheduler) - 1)
+            relative_t = self.scheduler[t]
+            relative_dt = get_timestep_step_sizes(relative_t)
             unmask_threshold = relative_dt / relative_t
 
             # With remasking, the unmasking probability is changed
