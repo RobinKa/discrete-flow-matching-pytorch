@@ -51,6 +51,7 @@ def main(
     hidden_dim: int = 768,
     num_layers: int = 6,
     scheduler_type: str = "square",
+    learning_rate: float = 1e-2,
 ):
     torch.set_float32_matmul_precision("high")
 
@@ -88,6 +89,7 @@ def main(
         num_layers=num_layers,
         tokenizer=tokenizer,
         scheduler_type=scheduler_type,
+        learning_rate=learning_rate,
     ).to(dtype=torch.bfloat16)
 
     if compile:
@@ -112,7 +114,7 @@ def main(
         limit_val_batches=1,
         callbacks=[
             FlopCounterCallback(train_step_flops=train_step_flops),
-            ModelCheckpoint(every_n_train_steps=checkpoint_interval, save_top_k=-1),
+            ModelCheckpoint(every_n_train_steps=checkpoint_interval),
         ],
         logger=WandbLogger(
             project="discrete-flow-matching",

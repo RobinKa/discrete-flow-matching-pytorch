@@ -49,6 +49,7 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         tokenizer: PreTrainedTokenizerBase,
         val_num_sampling_steps: int = 8,
         scheduler_type: Literal["linear", "square"] = "square",
+        learning_rate: float = 1e-2,
     ):
         super().__init__()
 
@@ -57,6 +58,7 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
         self.pad_token_id = self.tokenizer.pad_token_id
         self.mask_token_id = self.tokenizer.mask_token_id
         self.val_num_sampling_steps = val_num_sampling_steps
+        self.learning_rate = learning_rate
 
         self.scheduler = torch.linspace(
             1 / num_timesteps, 1, steps=num_timesteps, dtype=torch.float32
@@ -111,6 +113,11 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
 
     def on_fit_start(self) -> None:
         self.scheduler = self.scheduler.to(self.device)
+
+        print("Setting learning rate to", self.learning_rate)
+        opt = self.optimizers(False)
+        assert isinstance(opt, torch.optim.Optimizer)
+        opt.param_groups[0]["lr"] = self.learning_rate
 
     def on_validation_model_eval(self) -> None:
         self.scheduler = self.scheduler.to(self.device)
@@ -435,4 +442,4 @@ class DiscreteFlowMatchingNet(pl.LightningModule):
             return x
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=1e-2)
+        return torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
