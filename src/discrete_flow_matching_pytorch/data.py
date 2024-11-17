@@ -2,7 +2,7 @@ import os
 
 import datasets
 import torch
-import typer
+from jsonargparse import CLI
 from more_itertools import chunked
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -169,4 +169,4 @@ def main(
 
 
 if __name__ == "__main__":
-    typer.run(main)
+    CLI(main)

@@ -3,7 +3,7 @@ from time import time
 
 import lightning.pytorch as pl
 import torch
-import typer
+from jsonargparse import CLI
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from pyinstrument import Profiler
@@ -20,8 +20,6 @@ from discrete_flow_matching_pytorch.lightning import DiscreteFlowMatchingNet
 
 logger = get_logger()
 
-app = typer.Typer(pretty_exceptions_show_locals=False)
-
 
 def get_run_name(
     dataset: str,
@@ -33,13 +31,12 @@ def get_run_name(
     return f"{dataset}-bs={train_batch_size}-h={hidden_dim}-l={num_layers}-s={scheduler_type}"
 
 
-@app.command()
 def main(
     compile: bool = True,
     wandb: bool = True,
     max_steps: int = -1,
     profile: bool = False,
-    train_step_flops: str = "",
+    train_step_flops: float | None = None,
     ckpt_path: str = "",
     val_interval: int = 500,
     checkpoint_interval: int = 1_000,
@@ -100,7 +97,6 @@ def main(
         model = torch.compile(model)
 
     # Train model
-    train_step_flops = float(train_step_flops) if train_step_flops else None
     if train_step_flops is not None:
         logger.info("Using train step flops", train_step_flops=train_step_flops)
     else:
@@ -155,4 +151,4 @@ def main(
 
 
 if __name__ == "__main__":
-    app()
+    CLI(main)

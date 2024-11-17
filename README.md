@@ -14,7 +14,7 @@ Implementation of Discrete Flow Matching [[1]](https://arxiv.org/abs/2402.04997)
 2. Make sure Python 3.12 is installed: `uv python install 3.12`
 3. Install the dependencies: `uv sync --group jupyter`
 
-Run `python -m discrete_flow_matching_pytorch.train` to start training a text generation model logging to wandb.
+Run `python -m discrete_flow_matching_pytorch.train --config configs/conv-8.yaml` to start training a text generation model logging to wandb.
 
 The [sample notebook](notebooks/sample.ipynb) demonstrates the sampling process.
 
