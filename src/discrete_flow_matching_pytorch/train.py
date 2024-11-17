@@ -16,7 +16,7 @@ from discrete_flow_matching_pytorch.data import (
     load_dataset_by_name,
 )
 from discrete_flow_matching_pytorch.flops import FlopCounterCallback
-from discrete_flow_matching_pytorch.model import DiscreteFlowMatchingNet
+from discrete_flow_matching_pytorch.lightning import DiscreteFlowMatchingNet
 
 logger = get_logger()
 
